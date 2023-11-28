@@ -1,0 +1,10 @@
+{
+  "python.autoComplete.extraPaths": [ ],
+  "python.analysis.extraPaths": [ ],
+  "editor.formatOnSave": true,
+  "editor.rulers": [ 88 ],
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": true,
+  },
+  "json.format.keepLines": true,
+}

@@ -1,0 +1,24 @@
+{
+  "dm": {
+    "batch_size": 128,
+    "num_workers": 10,
+    "data_dir": "./data",
+    "train_val_split": [ 55000, 5000 ],
+    "calculate_stats": true,
+    "default_mean": 0.5,
+    "default_std": 0.5
+  },
+  "model": {
+    "g_lr": 0.002,
+    "d_lr": 0.002,
+    "b1": 0.5,
+    "b2": 0.999,
+    "latent_dim": 128,
+    "channels": 1
+  },
+  "trainer": {
+    "max_epochs": 1,
+    "log_dir": "./saved/lightning_logs/",
+    "logger_name": "mnist_gan"
+  }
+}
