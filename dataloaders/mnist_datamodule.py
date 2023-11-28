@@ -16,6 +16,18 @@ class MNISTDataModule(L.LightningDataModule):
         self.num_workers = config['num_workers']
         self.mean = self.default_mean
         self.std = self.default_std
+        self.use_augmentation = config['use_augmentation']
+        self.augmentation_transforms = transforms.Compose(
+            [
+                transforms.Pad(padding=4, fill=1, padding_mode='constant'),
+                transforms.RandomRotation(degrees=20),
+                transforms.RandomAffine(
+                    degrees=20, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
+                ),
+                transforms.RandomPerspective(distortion_scale=0.5, p=0.5),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            ]
+        )
 
     def prepare_data(self):
         # Download only once
@@ -33,20 +45,32 @@ class MNISTDataModule(L.LightningDataModule):
             self.mean, self.std = self.calculate_mean_std(mnist_for_calculation)
 
     def setup(self, stage=None):
-        # Update transform with calculated or default mean and std
-        self.transform = transforms.Compose(
+        if self.use_augmentation:
+            train_transforms = transforms.Compose(
+                [
+                    self.augmentation_transforms,
+                    transforms.ToTensor(),
+                    transforms.Normalize((self.mean,), (self.std,)),
+                ]
+            )
+        else:
+            train_transforms = transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((self.mean,), (self.std,))]
+            )
+
+        # Test and validation transforms (no augmentation)
+        test_transforms = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((self.mean,), (self.std,))]
         )
-
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            mnist_full = MNIST(self.data_dir, train=True, transform=self.transform)
+            mnist_full = MNIST(self.data_dir, train=True, transform=train_transforms)
             self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
             self.mnist_test = MNIST(
-                self.data_dir, train=False, transform=self.transform
+                self.data_dir, train=False, transform=test_transforms
             )
 
     def train_dataloader(self):

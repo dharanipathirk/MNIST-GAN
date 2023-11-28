@@ -34,6 +34,7 @@ class DCGAN(L.LightningModule):
         opt_g, opt_d = self.optimizers()
 
         # Train generator
+        self.toggle_optimizer(opt_g)
         self.generated_imgs = self(z)
         g_loss = self.adversarial_loss(
             self.discriminator(self.generated_imgs),
@@ -50,8 +51,10 @@ class DCGAN(L.LightningModule):
             prog_bar=True,
             logger=True,
         )
+        self.untoggle_optimizer(opt_g)
 
         # Train discriminator
+        self.toggle_optimizer(opt_d)
         real_loss = self.adversarial_loss(
             self.discriminator(imgs), torch.ones((imgs.size(0), 1), device=self.device)
         )
@@ -71,6 +74,7 @@ class DCGAN(L.LightningModule):
             prog_bar=True,
             logger=True,
         )
+        self.untoggle_optimizer(opt_d)
 
     def configure_optimizers(self):
         g_lr = self.config['g_lr']

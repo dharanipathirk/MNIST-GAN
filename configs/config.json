@@ -6,7 +6,8 @@
     "train_val_split": [ 55000, 5000 ],
     "calculate_stats": true,
     "default_mean": 0.5,
-    "default_std": 0.5
+    "default_std": 0.5,
+    "use_augmentation": true
   },
   "model": {
     "g_lr": 0.002,
