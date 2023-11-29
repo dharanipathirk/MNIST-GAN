@@ -1,4 +1,5 @@
 import lightning as L
+import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, random_split
 from torchvision.datasets import MNIST
@@ -17,9 +18,11 @@ class MNISTDataModule(L.LightningDataModule):
         self.mean = self.default_mean
         self.std = self.default_std
         self.use_augmentation = config['use_augmentation']
+        self.augmentations_per_image = config['augmentations_per_image']
         self.augmentation_transforms = transforms.Compose(
             [
                 transforms.Pad(padding=4, fill=1, padding_mode='constant'),
+                transforms.Resize((28, 28), antialias=True),
                 transforms.RandomRotation(degrees=20),
                 transforms.RandomAffine(
                     degrees=20, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
@@ -75,7 +78,10 @@ class MNISTDataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(
-            self.mnist_train, batch_size=self.batch_size, num_workers=self.num_workers
+            self.mnist_train,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            collate_fn=self.custom_collate_fn,
         )
 
     def val_dataloader(self):
@@ -105,3 +111,14 @@ class MNISTDataModule(L.LightningDataModule):
         mean /= total_images
         std /= total_images
         return mean.item(), std.item()
+
+    # Custom collate function to apply augmentation multiple times
+    def custom_collate_fn(self, batch):
+        augmented_batch = []
+        for image, label in batch:
+            for _ in range(self.augmentations_per_image):
+                augmented_image = self.augmentation_transforms(image)
+                augmented_batch.append((augmented_image, label))
+
+        images, labels = zip(*augmented_batch)
+        return torch.stack(images), torch.tensor(labels)

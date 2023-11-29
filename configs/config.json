@@ -7,18 +7,19 @@
     "calculate_stats": true,
     "default_mean": 0.5,
     "default_std": 0.5,
-    "use_augmentation": true
+    "use_augmentation": true,
+    "augmentations_per_image": 2
   },
   "model": {
-    "g_lr": 0.002,
-    "d_lr": 0.002,
+    "g_lr": 0.0001,
+    "d_lr": 0.0001,
     "b1": 0.5,
     "b2": 0.999,
     "latent_dim": 128,
     "channels": 1
   },
   "trainer": {
-    "max_epochs": 1,
+    "max_epochs": 50,
     "log_dir": "./saved/lightning_logs/",
     "logger_name": "mnist_gan"
   }

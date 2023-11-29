@@ -7,6 +7,8 @@ import torchsummary
 from dataloaders.mnist_datamodule import MNISTDataModule
 from models.dcgan import DCGAN
 
+# L.seed_everything(420)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a GAN')
