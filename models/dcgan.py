@@ -1,13 +1,60 @@
 import lightning as L
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torchvision.utils import make_grid
 
-from models.base.discriminator import Discriminator
-from models.base.generator import Generator
-
 # import torchvision.utils as vutils
+
+
+class Generator(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.model = nn.Sequential(
+            nn.ConvTranspose2d(config['latent_dim'], 1024, 3, 1, 0, bias=False),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(1024, 512, 3, 2, 0, bias=False),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(512, 256, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(256, config['channels'], 4, 2, 1, bias=False),
+            nn.Tanh(),
+        )
+
+    def forward(self, z):
+        return self.model(z)
+
+
+class Discriminator(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.model = nn.Sequential(
+            nn.Conv2d(config['channels'], 256, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 512, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(512, 1024, 3, 2, 0, bias=False),
+            nn.BatchNorm2d(1024),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(1024, 1, 3, 1, 0, bias=False),
+        )
+
+    def forward(self, img):
+        out = self.model(img)
+        return (
+            out.view(-1, 1)
+            if self.config['use_wasserstein']
+            else torch.sigmoid(out).view(-1, 1)
+        )
 
 
 class DCGAN(L.LightningModule):
@@ -25,9 +72,6 @@ class DCGAN(L.LightningModule):
     def adversarial_loss(self, y_hat, y):
         return F.binary_cross_entropy(y_hat, y)
 
-    def wasserstein_loss(self, y_hat, y):
-        return -torch.mean(y * y_hat)
-
     def training_step(self, batch, batch_idx):
         imgs, _ = batch
 
@@ -44,47 +88,41 @@ class DCGAN(L.LightningModule):
 
         if self.config['use_wasserstein']:
             # WGAN loss computation
-
-            # Train generator
-            self.toggle_optimizer(opt_g)
-            self.generated_imgs = self(z)
-            g_loss = -torch.mean(self.discriminator(self.generated_imgs))
-            opt_g.zero_grad()
-            self.manual_backward(g_loss)
-            opt_g.step()
-            self.log(
-                'generator_loss',
-                g_loss,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            self.untoggle_optimizer(opt_g)
-
-            # Train discriminator
-            self.toggle_optimizer(opt_d)
-            real_loss = self.wasserstein_loss(
-                self.discriminator(imgs),
-                torch.ones((imgs.size(0), 1), device=self.device),
-            )
-            fake_loss = self.wasserstein_loss(
-                self.discriminator(self(z).detach()),
-                -torch.ones((imgs.size(0), 1), device=self.device),
-            )
-            d_loss = fake_loss + real_loss
-            opt_d.zero_grad()
-            self.manual_backward(d_loss)
-            opt_d.step()
-            self.log(
-                'discriminator_loss',
-                d_loss,
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-            )
-            self.untoggle_optimizer(opt_d)
+            if self.global_step % self.config['n_critic_steps'] != 0:
+                # Train generator
+                self.toggle_optimizer(opt_g)
+                self.generated_imgs = self(z)
+                g_loss = -torch.mean(self.discriminator(self.generated_imgs))
+                opt_g.zero_grad()
+                self.manual_backward(g_loss)
+                opt_g.step()
+                self.log(
+                    'generator_loss',
+                    g_loss,
+                    on_step=True,
+                    on_epoch=True,
+                    prog_bar=True,
+                    logger=True,
+                )
+                self.untoggle_optimizer(opt_g)
+            else:
+                # Train critic
+                self.toggle_optimizer(opt_d)
+                d_loss = -torch.mean(self.discriminator(imgs)) + torch.mean(
+                    self.discriminator(self(z))
+                )
+                opt_d.zero_grad()
+                self.manual_backward(d_loss)
+                opt_d.step()
+                self.log(
+                    'critic_loss',
+                    d_loss,
+                    on_step=True,
+                    on_epoch=True,
+                    prog_bar=True,
+                    logger=True,
+                )
+                self.untoggle_optimizer(opt_d)
 
         else:
             # Train generator
