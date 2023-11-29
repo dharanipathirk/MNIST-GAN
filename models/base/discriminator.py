@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 
 
@@ -16,8 +17,12 @@ class Discriminator(nn.Module):
             nn.BatchNorm2d(1024),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(1024, 1, 3, 1, 0, bias=False),
-            nn.Sigmoid(),
         )
 
     def forward(self, img):
-        return self.model(img).view(-1, 1)
+        out = self.model(img)
+        return (
+            out.view(-1, 1)
+            if self.config['use_wasserstein']
+            else torch.sigmoid(out).view(-1, 1)
+        )

@@ -1,3 +1,5 @@
+import random
+
 import lightning as L
 import torch
 import torchvision.transforms as transforms
@@ -19,18 +21,13 @@ class MNISTDataModule(L.LightningDataModule):
         self.std = self.default_std
         self.use_augmentation = config['use_augmentation']
         self.augmentations_per_image = config['augmentations_per_image']
-        self.augmentation_transforms = transforms.Compose(
-            [
-                transforms.Pad(padding=4, fill=1, padding_mode='constant'),
-                transforms.Resize((28, 28), antialias=True),
-                transforms.RandomRotation(degrees=20),
-                transforms.RandomAffine(
-                    degrees=20, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
-                ),
-                transforms.RandomPerspective(distortion_scale=0.5, p=0.5),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2),
-            ]
-        )
+        self.augmentation_transforms = [
+            transforms.RandomRotation(degrees=30),
+            transforms.RandomAffine(
+                degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
+            ),
+            transforms.RandomPerspective(distortion_scale=0.5, p=0.6),
+        ]
 
     def prepare_data(self):
         # Download only once
@@ -48,41 +45,38 @@ class MNISTDataModule(L.LightningDataModule):
             self.mean, self.std = self.calculate_mean_std(mnist_for_calculation)
 
     def setup(self, stage=None):
-        if self.use_augmentation:
-            train_transforms = transforms.Compose(
-                [
-                    self.augmentation_transforms,
-                    transforms.ToTensor(),
-                    transforms.Normalize((self.mean,), (self.std,)),
-                ]
-            )
-        else:
-            train_transforms = transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((self.mean,), (self.std,))]
-            )
-
-        # Test and validation transforms (no augmentation)
-        test_transforms = transforms.Compose(
+        # Update transform with calculated or default mean and std
+        self.basic_transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((self.mean,), (self.std,))]
         )
+
         # Assign train/val datasets for use in dataloaders
         if stage == 'fit' or stage is None:
-            mnist_full = MNIST(self.data_dir, train=True, transform=train_transforms)
+            mnist_full = MNIST(
+                self.data_dir, train=True, transform=self.basic_transform
+            )
             self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
         # Assign test dataset for use in dataloader(s)
         if stage == 'test' or stage is None:
             self.mnist_test = MNIST(
-                self.data_dir, train=False, transform=test_transforms
+                self.data_dir, train=False, transform=self.basic_transform
             )
 
     def train_dataloader(self):
-        return DataLoader(
-            self.mnist_train,
-            batch_size=self.batch_size,
-            num_workers=self.num_workers,
-            collate_fn=self.custom_collate_fn,
-        )
+        if self.use_augmentation:
+            return DataLoader(
+                self.mnist_train,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+                collate_fn=self.custom_collate_fn,
+            )
+        else:
+            return DataLoader(
+                self.mnist_train,
+                batch_size=self.batch_size,
+                num_workers=self.num_workers,
+            )
 
     def val_dataloader(self):
         return DataLoader(
@@ -116,8 +110,11 @@ class MNISTDataModule(L.LightningDataModule):
     def custom_collate_fn(self, batch):
         augmented_batch = []
         for image, label in batch:
+            augmented_batch.append((image, label))
+
             for _ in range(self.augmentations_per_image):
-                augmented_image = self.augmentation_transforms(image)
+                random_transform = random.choice(self.augmentation_transforms)
+                augmented_image = random_transform(image)
                 augmented_batch.append((augmented_image, label))
 
         images, labels = zip(*augmented_batch)
