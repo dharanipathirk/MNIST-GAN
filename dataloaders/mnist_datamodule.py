@@ -21,13 +21,6 @@ class MNISTDataModule(L.LightningDataModule):
         self.std = self.default_std
         self.use_augmentation = config['use_augmentation']
         self.augmentations_per_image = config['augmentations_per_image']
-        self.augmentation_transforms = [
-            transforms.RandomRotation(degrees=30),
-            transforms.RandomAffine(
-                degrees=30, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10
-            ),
-            transforms.RandomPerspective(distortion_scale=0.5, p=0.6),
-        ]
 
     def prepare_data(self):
         # Download only once
@@ -109,11 +102,26 @@ class MNISTDataModule(L.LightningDataModule):
     # Custom collate function to apply augmentation multiple times
     def custom_collate_fn(self, batch):
         augmented_batch = []
+        augmentation_transforms = [
+            transforms.RandomRotation(
+                degrees=40, fill=-(self.mean / self.std)
+            ),  # "fill=-(self.mean / self.std)" to fill the empty space with the lowest pixel value
+            transforms.RandomAffine(
+                degrees=40,
+                translate=(0.1, 0.1),
+                scale=(0.9, 1.1),
+                shear=10,
+                fill=-(self.mean / self.std),
+            ),
+            transforms.RandomPerspective(
+                distortion_scale=0.5, p=0.6, fill=-(self.mean / self.std)
+            ),
+        ]
         for image, label in batch:
             augmented_batch.append((image, label))
 
             for _ in range(self.augmentations_per_image):
-                random_transform = random.choice(self.augmentation_transforms)
+                random_transform = random.choice(augmentation_transforms)
                 augmented_image = random_transform(image)
                 augmented_batch.append((augmented_image, label))
 

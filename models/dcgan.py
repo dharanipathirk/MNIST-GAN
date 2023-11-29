@@ -7,6 +7,8 @@ from torchvision.utils import make_grid
 from models.base.discriminator import Discriminator
 from models.base.generator import Generator
 
+# import torchvision.utils as vutils
+
 
 class DCGAN(L.LightningModule):
     def __init__(self, config):
@@ -29,7 +31,7 @@ class DCGAN(L.LightningModule):
     def training_step(self, batch, batch_idx):
         imgs, _ = batch
 
-        # to view real images in tensorboard
+        # to view real images in tensorboard (uncomment import torchvision.utils as vutils)
         # grid = vutils.make_grid(imgs, normalize=True)
         # self.logger.experiment.add_image('real_images', grid, self.current_epoch)
 
