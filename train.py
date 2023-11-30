@@ -5,7 +5,9 @@ import lightning as L
 import torchsummary
 
 from dataloaders.mnist_datamodule import MNISTDataModule
+from models.cgan import ConditionalGAN
 from models.dcgan import DCGAN
+from models.ecgan import EncoderCGAN
 
 # L.seed_everything(420)
 
@@ -33,6 +35,9 @@ def initialize_trainer(config):
 
 
 def print_model_summary(model, config):
+    if config['model_type'] == 'ECGAN':
+        print('Encoder Summary:')
+        torchsummary.summary(model.encoder, (config['channels'], 28, 28), device='cpu')
     print('Generator Summary:')
     torchsummary.summary(model.generator, (config['latent_dim'], 1, 1), device='cpu')
     print('\nDiscriminator Summary:')
@@ -44,12 +49,21 @@ def print_model_summary(model, config):
 def main(config_path):
     config = load_config(config_path)
 
-    dm = MNISTDataModule(config['dm'])
-    model = DCGAN(config['model'])
+    dm = MNISTDataModule(config['datamodule'])
+
+    if config['model']['model_type'] == 'DCGAN':
+        model = DCGAN(config['model'])
+        print_model_summary(model, config['model'])
+
+    elif config['model']['model_type'] == 'CGAN':
+        model = ConditionalGAN(config['model'])
+        # no model summary for CGAN since the dummy variables used by the torchsummary for labels are float instead of int
+
+    elif config['model']['model_type'] == 'ECGAN':
+        model = EncoderCGAN(config['model'])
+        print_model_summary(model, config['model'])
 
     trainer = initialize_trainer(config['trainer'])
-
-    print_model_summary(model, config['model'])
 
     trainer.fit(model, dm)
 

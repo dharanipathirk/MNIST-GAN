@@ -1,5 +1,5 @@
 {
-  "dm": {
+  "datamodule": {
     "batch_size": 128,
     "num_workers": 10,
     "data_dir": "./data",
@@ -7,15 +7,17 @@
     "calculate_stats": true,
     "default_mean": 0.5,
     "default_std": 0.5,
-    "use_augmentation": false,
-    "augmentations_per_image": 2
+    "use_augmentation": true,
+    "augmentations_per_image": 4
   },
   "model": {
+    "model_type": "CGAN",
     "g_lr": 0.0001,
     "d_lr": 0.0001,
     "b1": 0.5,
     "b2": 0.999,
-    "latent_dim": 128,
+    "latent_dim": 10,
+    "n_classes": 10,
     "channels": 1,
     "use_wasserstein": false,
     "n_critic_steps": 3

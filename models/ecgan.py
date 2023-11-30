@@ -8,6 +8,28 @@ from torchvision.utils import make_grid
 # import torchvision.utils as vutils
 
 
+class Encoder(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+        self.model = nn.Sequential(
+            nn.Conv2d(config['channels'], 64, 4, 2, 1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 4, 2, 1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 3, 2, 0),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Flatten(),
+            nn.Linear(256 * 3 * 3, config['latent_dim']),
+        )
+
+    def forward(self, img):
+        return self.model(img)
+
+
 class Generator(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -57,13 +79,14 @@ class Discriminator(nn.Module):
         )
 
 
-class DCGAN(L.LightningModule):
+class EncoderCGAN(L.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
         self.automatic_optimization = False
         self.generator = Generator(config)
         self.discriminator = Discriminator(config)
+        self.encoder = Encoder(config)
 
     def forward(self, z):
         return self.generator(z)
@@ -78,9 +101,9 @@ class DCGAN(L.LightningModule):
         # grid = vutils.make_grid(imgs, normalize=True)
         # self.logger.experiment.add_image('real_images', grid, self.current_epoch)
 
-        # Sample noise
-        z = torch.randn(imgs.shape[0], self.config['latent_dim'], 1, 1)
-        z = z.type_as(imgs)
+        #  encode real images to latent space
+        z_real = self.encoder(imgs)
+        z_real = z_real.view(imgs.size(0), self.config['latent_dim'], 1, 1)
 
         # Access optimizers
         opt_g, opt_d = self.optimizers()
@@ -90,7 +113,7 @@ class DCGAN(L.LightningModule):
             if self.global_step % self.config['n_critic_steps'] != 0:
                 # Train generator
                 self.toggle_optimizer(opt_g)
-                self.generated_imgs = self(z)
+                self.generated_imgs = self(z_real)
                 g_loss = -torch.mean(self.discriminator(self.generated_imgs))
                 opt_g.zero_grad()
                 self.manual_backward(g_loss)
@@ -108,7 +131,7 @@ class DCGAN(L.LightningModule):
                 # Train critic
                 self.toggle_optimizer(opt_d)
                 d_loss = -torch.mean(self.discriminator(imgs)) + torch.mean(
-                    self.discriminator(self(z))
+                    self.discriminator(self(z_real))
                 )
                 opt_d.zero_grad()
                 self.manual_backward(d_loss)
@@ -126,7 +149,7 @@ class DCGAN(L.LightningModule):
         else:
             # Train generator
             self.toggle_optimizer(opt_g)
-            self.generated_imgs = self(z)
+            self.generated_imgs = self(z_real)
             g_loss = self.adversarial_loss(
                 self.discriminator(self.generated_imgs),
                 torch.ones((imgs.size(0), 1), device=self.device),
@@ -151,7 +174,7 @@ class DCGAN(L.LightningModule):
                 torch.ones((imgs.size(0), 1), device=self.device),
             )
             fake_loss = self.adversarial_loss(
-                self.discriminator(self(z).detach()),
+                self.discriminator(self(z_real).detach()),
                 torch.zeros((imgs.size(0), 1), device=self.device),
             )
             d_loss = (real_loss + fake_loss) / 2
@@ -179,15 +202,25 @@ class DCGAN(L.LightningModule):
         return opt_g, opt_d
 
     def validation_step(self, batch, batch_idx):
-        z = torch.randn(8, self.config['latent_dim'], 1, 1)
-        z = z.type_as(batch[0])
-        generated_imgs = self(z)
+        imgs, _ = batch
+        # Encode real images to latent space
+        z_encoded = self.encoder(imgs)
+        z_encoded = z_encoded.view(imgs.size(0), self.config['latent_dim'], 1, 1)
+        generated_imgs = self.generator(z_encoded)
         return generated_imgs
 
     def on_validation_epoch_end(self):
-        z = torch.randn(8, self.config['latent_dim'], 1, 1)
-        z = z.type_as(next(self.generator.parameters()))
-        sample_imgs = self(z)
+        # Select a batch of real images
+        val_loader = self.trainer.datamodule.val_dataloader()
+
+        real_imgs, _ = next(iter(val_loader))
+        real_imgs = real_imgs[:8]
+        real_imgs = real_imgs.type_as(next(self.generator.parameters()))
+
+        z_encoded = self.encoder(real_imgs)
+        z_encoded = z_encoded.view(8, self.config['latent_dim'], 1, 1)
+        sample_imgs = self.generator(z_encoded)
+
         grid = make_grid(sample_imgs)
         self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
 
