@@ -7,8 +7,8 @@
     "calculate_stats": true,
     "default_mean": 0.5,
     "default_std": 0.5,
-    "use_augmentation": true,
-    "augmentations_per_image": 4
+    "use_augmentation": false,
+    "augmentations_per_image": 2
   },
   "model": {
     "model_type": "DCGAN",
@@ -23,8 +23,8 @@
     "n_critic_steps": 3
   },
   "trainer": {
-    "max_epochs": 100,
+    "max_epochs": 20,
     "log_dir": "./saved/lightning_logs/",
-    "logger_name": "mnist_gan"
+    "logger_name": "DCGAN"
   }
 }

@@ -9,9 +9,10 @@ from models.cgan import ConditionalGAN
 from models.dcgan import DCGAN
 from models.ecgan import EncoderCGAN
 
-# L.seed_everything(420)
+L.seed_everything(911)
 
 
+# Parsing command line arguments for configuration
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a GAN')
     parser.add_argument(
@@ -20,11 +21,13 @@ def parse_args():
     return parser.parse_args()
 
 
+# Loading configuration from a JSON file
 def load_config(config_path):
     with open(config_path) as json_file:
         return json.load(json_file)
 
 
+# Initializing the Lightning trainer with configurations
 def initialize_trainer(config):
     return L.Trainer(
         max_epochs=config['max_epochs'],
@@ -34,6 +37,7 @@ def initialize_trainer(config):
     )
 
 
+# Printing summary of the model
 def print_model_summary(model, config):
     if config['model_type'] == 'ECGAN':
         print('Encoder Summary:')

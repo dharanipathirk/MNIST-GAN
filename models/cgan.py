@@ -8,11 +8,14 @@ from torchvision.utils import make_grid
 # import torchvision.utils as vutils
 
 
+# generator that takes in noise vector and label and then concatenates noise and label embedding
 class Generator(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.label_emb = nn.Embedding(config['n_classes'], config['n_classes'])
+        self.label_emb = nn.Embedding(
+            config['n_classes'], config['n_classes']
+        )  # Embedding layer to transform labels into embeddings
 
         self.model = nn.Sequential(
             nn.ConvTranspose2d(
@@ -37,6 +40,7 @@ class Generator(nn.Module):
         return self.model(z)
 
 
+# discriminator that takes in image and label and concatenates image and label embedding
 class Discriminator(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -62,6 +66,7 @@ class Discriminator(nn.Module):
         labels = labels.expand(-1, -1, img.size(2), img.size(3))
         img = torch.cat([img, labels], dim=1)
         out = self.model(img)
+        # apply sigmoid when not using W loss
         return (
             out.view(-1, 1)
             if self.config['use_wasserstein']
@@ -69,10 +74,12 @@ class Discriminator(nn.Module):
         )
 
 
+# Conditional GAN
 class ConditionalGAN(L.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        # Disabling automatic optimization so that we can use multiple optimizers
         self.automatic_optimization = False
         self.generator = Generator(config)
         self.discriminator = Discriminator(config)
@@ -80,6 +87,7 @@ class ConditionalGAN(L.LightningModule):
     def forward(self, z, labels):
         return self.generator(z, labels)
 
+    # BCE loss for standard training
     def adversarial_loss(self, y_hat, y):
         return F.binary_cross_entropy(y_hat, y)
 
@@ -98,11 +106,13 @@ class ConditionalGAN(L.LightningModule):
         opt_g, opt_d = self.optimizers()
 
         if self.config['use_wasserstein']:
-            # WGAN loss computation
+            # Training with W loss
+            # training frequency of generator
             if self.global_step % self.config['n_critic_steps'] != 0:
                 # Train generator
                 self.toggle_optimizer(opt_g)
                 self.generated_imgs = self(z, labels)
+                # generator W loss
                 g_loss = -torch.mean(self.discriminator(self.generated_imgs, labels))
                 opt_g.zero_grad()
                 self.manual_backward(g_loss)
@@ -119,6 +129,7 @@ class ConditionalGAN(L.LightningModule):
             else:
                 # Train critic
                 self.toggle_optimizer(opt_d)
+                # critic W loss
                 d_loss = -torch.mean(self.discriminator(imgs, labels)) + torch.mean(
                     self.discriminator(self(z, labels), labels)
                 )
@@ -139,6 +150,7 @@ class ConditionalGAN(L.LightningModule):
             # Train generator
             self.toggle_optimizer(opt_g)
             self.generated_imgs = self(z, labels)
+            # generator BCE loss
             g_loss = self.adversarial_loss(
                 self.discriminator(self.generated_imgs, labels),
                 torch.ones((imgs.size(0), 1), device=self.device),
@@ -166,6 +178,7 @@ class ConditionalGAN(L.LightningModule):
                 self.discriminator(self(z, labels).detach(), labels),
                 torch.zeros((imgs.size(0), 1), device=self.device),
             )
+            # discriminator loss
             d_loss = (real_loss + fake_loss) / 2
             opt_d.zero_grad()
             self.manual_backward(d_loss)
@@ -180,6 +193,7 @@ class ConditionalGAN(L.LightningModule):
             )
             self.untoggle_optimizer(opt_d)
 
+    # optimizers for generator and discriminator
     def configure_optimizers(self):
         g_lr = self.config['g_lr']
         d_lr = self.config['d_lr']
@@ -191,6 +205,7 @@ class ConditionalGAN(L.LightningModule):
         return opt_g, opt_d
 
     def validation_step(self, batch, batch_idx):
+        # Generating a fixed number of images with random noise and labels
         z = torch.randn(8, self.config['latent_dim'], 1, 1, device=self.device)
         val_labels = torch.randint(
             0, self.config['n_classes'], (8,), device=self.device
@@ -200,6 +215,7 @@ class ConditionalGAN(L.LightningModule):
         return generated_imgs
 
     def on_validation_epoch_end(self):
+        # Generating and logging a grid of images at the end of each val epoch
         z = torch.randn(8, self.config['latent_dim'], 1, 1, device=self.device)
         val_labels = torch.randint(
             0, self.config['n_classes'], (8,), device=self.device
@@ -210,6 +226,7 @@ class ConditionalGAN(L.LightningModule):
         self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
 
     def on_after_backward(self):
+        # weight clipping when using W loss
         if self.config['use_wasserstein']:
             with torch.no_grad():
                 for p in self.discriminator.parameters():

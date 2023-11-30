@@ -8,18 +8,19 @@ from torchvision.utils import make_grid
 # import torchvision.utils as vutils
 
 
+# Encoder to encode given real image into a latent vector to feed into generator
 class Encoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
 
         self.model = nn.Sequential(
-            nn.Conv2d(config['channels'], 64, 4, 2, 1),
+            nn.Conv2d(config['channels'], 64, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(64, 128, 4, 2, 1),
+            nn.Conv2d(64, 128, 4, 2, 1, bias=False),
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(128, 256, 3, 2, 0),
+            nn.Conv2d(128, 256, 3, 2, 0, bias=False),
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Flatten(),
@@ -30,6 +31,7 @@ class Encoder(nn.Module):
         return self.model(img)
 
 
+# generator takes in latent vector from the encoder as input
 class Generator(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -53,6 +55,7 @@ class Generator(nn.Module):
         return self.model(z)
 
 
+# simple convolutional discriminator
 class Discriminator(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -72,6 +75,7 @@ class Discriminator(nn.Module):
 
     def forward(self, img):
         out = self.model(img)
+        # apply sigmoid when not using W loss
         return (
             out.view(-1, 1)
             if self.config['use_wasserstein']
@@ -79,10 +83,12 @@ class Discriminator(nn.Module):
         )
 
 
+# Encoder conditional GAN
 class EncoderCGAN(L.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        # Disabling automatic optimization so that we can use multiple optimizers
         self.automatic_optimization = False
         self.generator = Generator(config)
         self.discriminator = Discriminator(config)
@@ -91,6 +97,7 @@ class EncoderCGAN(L.LightningModule):
     def forward(self, z):
         return self.generator(z)
 
+    # BCE loss for standard training
     def adversarial_loss(self, y_hat, y):
         return F.binary_cross_entropy(y_hat, y)
 
@@ -109,11 +116,13 @@ class EncoderCGAN(L.LightningModule):
         opt_g, opt_d = self.optimizers()
 
         if self.config['use_wasserstein']:
-            # WGAN loss computation
+            # Training with W loss
+            # training frequency of generator
             if self.global_step % self.config['n_critic_steps'] != 0:
                 # Train generator
                 self.toggle_optimizer(opt_g)
                 self.generated_imgs = self(z_real)
+                # generator W loss
                 g_loss = -torch.mean(self.discriminator(self.generated_imgs))
                 opt_g.zero_grad()
                 self.manual_backward(g_loss)
@@ -130,6 +139,7 @@ class EncoderCGAN(L.LightningModule):
             else:
                 # Train critic
                 self.toggle_optimizer(opt_d)
+                # critic W loss
                 d_loss = -torch.mean(self.discriminator(imgs)) + torch.mean(
                     self.discriminator(self(z_real))
                 )
@@ -150,6 +160,7 @@ class EncoderCGAN(L.LightningModule):
             # Train generator
             self.toggle_optimizer(opt_g)
             self.generated_imgs = self(z_real)
+            # generator BCE loss
             g_loss = self.adversarial_loss(
                 self.discriminator(self.generated_imgs),
                 torch.ones((imgs.size(0), 1), device=self.device),
@@ -177,6 +188,7 @@ class EncoderCGAN(L.LightningModule):
                 self.discriminator(self(z_real).detach()),
                 torch.zeros((imgs.size(0), 1), device=self.device),
             )
+            # discriminator loss
             d_loss = (real_loss + fake_loss) / 2
             opt_d.zero_grad()
             self.manual_backward(d_loss)
@@ -191,6 +203,7 @@ class EncoderCGAN(L.LightningModule):
             )
             self.untoggle_optimizer(opt_d)
 
+    # optimizers for generator and discriminator
     def configure_optimizers(self):
         g_lr = self.config['g_lr']
         d_lr = self.config['d_lr']
@@ -210,6 +223,8 @@ class EncoderCGAN(L.LightningModule):
         return generated_imgs
 
     def on_validation_epoch_end(self):
+        # Generating and logging a grid of images at the end of each val epoch
+
         # Select a batch of real images
         val_loader = self.trainer.datamodule.val_dataloader()
 
@@ -225,6 +240,7 @@ class EncoderCGAN(L.LightningModule):
         self.logger.experiment.add_image('generated_images', grid, self.current_epoch)
 
     def on_after_backward(self):
+        # weight clipping when using W loss
         if self.config['use_wasserstein']:
             with torch.no_grad():
                 for p in self.discriminator.parameters():

@@ -43,14 +43,14 @@ class MNISTDataModule(L.LightningDataModule):
             [transforms.ToTensor(), transforms.Normalize((self.mean,), (self.std,))]
         )
 
-        # Assign train/val datasets for use in dataloaders
+        # Assign train/val datasets for use in dataloader
         if stage == 'fit' or stage is None:
             mnist_full = MNIST(
                 self.data_dir, train=True, transform=self.basic_transform
             )
             self.mnist_train, self.mnist_val = random_split(mnist_full, [55000, 5000])
 
-        # Assign test dataset for use in dataloader(s)
+        # Assign test dataset for use in dataloader
         if stage == 'test' or stage is None:
             self.mnist_test = MNIST(
                 self.data_dir, train=False, transform=self.basic_transform
@@ -83,6 +83,7 @@ class MNISTDataModule(L.LightningDataModule):
 
     @staticmethod
     def calculate_mean_std(dataset):
+        # method for calculating mean and std of the dataset
         loader = DataLoader(dataset, batch_size=1000, num_workers=1, shuffle=False)
         mean = 0.0
         std = 0.0
@@ -99,7 +100,7 @@ class MNISTDataModule(L.LightningDataModule):
         std /= total_images
         return mean.item(), std.item()
 
-    # Custom collate function to apply augmentation multiple times
+    # Custom collate function to apply augmentation multiple times to each image
     def custom_collate_fn(self, batch):
         augmented_batch = []
         augmentation_transforms = [
@@ -117,6 +118,7 @@ class MNISTDataModule(L.LightningDataModule):
                 distortion_scale=0.5, p=0.6, fill=-(self.mean / self.std)
             ),
         ]
+        # Apply augmentation to each image in the batch with random choice of augmentation
         for image, label in batch:
             augmented_batch.append((image, label))
 
